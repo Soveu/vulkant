@@ -166,6 +166,7 @@ version = "0.1.0"
 dependencies = [
  "glfw",
  "vulkant",
+ "vulkant-sys",
 ]
 
 [[package]]

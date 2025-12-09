@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 vulkant = { path = "../vulkant" }
+vulkant-sys = { path = "../vulkant-sys" }
 
 [dependencies.glfw]
 version = "0.61"
