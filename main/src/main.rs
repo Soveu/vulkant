@@ -77,17 +77,7 @@ fn create_instance(glfw_ext: &[String]) -> vulkant::Instance {
         ppEnabledExtensionNames: pointer_array.as_ptr(),
     };
 
-    let mut instance = std::ptr::null_mut();
-    let result = unsafe { vulkant_sys::vkCreateInstance(
-        &create_info,
-        std::ptr::null(),
-        &mut instance,
-    ) };
-
-    assert_eq!(result, 0);
-    assert_ne!(instance, std::ptr::null_mut());
-
-    todo!();
+    return unsafe { vulkant::Instance::create(&create_info) };
 }
 
 fn main() {
