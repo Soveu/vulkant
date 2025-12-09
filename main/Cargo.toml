@@ -1,0 +1,12 @@
+[package]
+name = "main"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vulkant = { path = "../vulkant" }
+
+[dependencies.glfw]
+version = "0.61"
+default-features = false
+features = ["vulkan", "wayland", "raw-window-handle-v0-6"]
