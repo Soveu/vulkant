@@ -63,7 +63,7 @@ fn create_instance(glfw_ext: &[String]) -> vulkant::Instance {
         applicationVersion: 1,
         pEngineName: c"None".as_ptr(),
         engineVersion: 0,
-        apiVersion: vulkant::make_version(0, 1, 4, 0),
+        apiVersion: vulkant::Version::new(0, 1, 4, 0).0,
     };
 
     let create_info = vulkant_sys::VkInstanceCreateInfo {
@@ -97,9 +97,17 @@ fn main() {
     let vk_layers = enumerate_instance_layer_properties();
     assert!(vk_layers.contains(c"VK_LAYER_KHRONOS_validation"));
 
-    let _instance = create_instance(&glfw_ext);
+    let instance = create_instance(&glfw_ext);
+    let devices = instance.enumerate_physical_devices();
 
-    while !window.should_close() {
-        glfw.poll_events();
-    }
+    let device = &devices[0];
+    let device_prop = device.get_properties();
+    assert_eq!(device_prop.2.conformanceVersion.major, 1);
+    assert_eq!(device_prop.2.conformanceVersion.minor, 4);
+    assert_ne!(device_prop.0.properties.limits.maxGeometryShaderInvocations, 0); // check for geometry shader
+    println!("{:#?}", device_prop);
+
+    // while !window.should_close() {
+    //     glfw.poll_events();
+    // }
 }

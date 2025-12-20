@@ -1,4 +1,7 @@
-use core::ptr::NonNull;
+use core::{fmt, marker::PhantomData, ptr::NonNull};
+
+mod version;
+pub use version::Version;
 
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq)]
@@ -25,6 +28,29 @@ impl Instance {
         assert_eq!(result, 0);
         return Self(NonNull::new(instance).unwrap());
     }
+
+    pub fn enumerate_physical_devices(&self) -> Vec<PhysicalDevice<'_>> {
+        let mut buf = Vec::new();
+        buf.resize(1024, Default::default());
+        let mut count = buf.len() as u32;
+
+        let result = unsafe { vulkant_sys::vkEnumeratePhysicalDevices(
+            self.0.as_ptr(),
+            &mut count,
+            buf.as_mut_ptr(),
+        ) };
+
+        assert_eq!(result, 0);
+
+        buf.resize(count as usize, Default::default());
+        return buf
+            .into_iter()
+            .map(|handle| PhysicalDevice {
+                handle: NonNull::new(handle).unwrap(),
+                phantom: PhantomData
+            })
+            .collect();
+    }
 }
 
 impl Drop for Instance {
@@ -37,12 +63,49 @@ impl Drop for Instance {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Version(u32);
-pub const fn make_version(variant: u8, major: u8, minor: u8, patch: u8) -> u32 {
-    return 0
-        | ((variant as u32) << 29)
-        | ((major as u32) << 22)
-        | ((minor as u32) << 12)
-        | ((patch as u32) << 0);
+#[repr(transparent)]
+pub struct PhysicalDevice<'instance> {
+    handle: NonNull<vulkant_sys::VkPhysicalDevice_T>,
+    phantom: PhantomData<&'instance Instance>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CombinedProperties(
+    pub vulkant_sys::VkPhysicalDeviceProperties2,
+    pub vulkant_sys::VkPhysicalDeviceVulkan11Properties,
+    pub vulkant_sys::VkPhysicalDeviceVulkan12Properties,
+    pub vulkant_sys::VkPhysicalDeviceVulkan13Properties,
+    pub vulkant_sys::VkPhysicalDeviceVulkan14Properties,
+);
+
+impl PhysicalDevice<'_> {
+    pub fn id(&self) -> usize {
+        self.handle.addr().get()
+    }
+
+    pub fn get_properties(&self) -> CombinedProperties {
+        let mut properties = CombinedProperties::default();
+        properties.0.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        properties.1.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES;
+        properties.2.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+        properties.3.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES;
+        properties.4.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES;
+        properties.0.pNext = core::ptr::from_mut(&mut properties.1).cast();
+        properties.1.pNext = core::ptr::from_mut(&mut properties.2).cast();
+        properties.2.pNext = core::ptr::from_mut(&mut properties.3).cast();
+        properties.3.pNext = core::ptr::from_mut(&mut properties.4).cast();
+
+        unsafe { vulkant_sys::vkGetPhysicalDeviceProperties2(
+            self.handle.as_ptr(),
+            &mut properties.0,
+        ) };
+
+        return properties;
+    }
+}
+
+impl fmt::Debug for PhysicalDevice<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PhysicalDevice({:X})", self.id())
+    }
 }
