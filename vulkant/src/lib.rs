@@ -120,6 +120,10 @@ pub struct QueueFamilyProperties {
 }
 
 impl<'instance> PhysicalDevice<'instance> {
+    pub fn get_raw(&self) -> vulkant_sys::VkPhysicalDevice {
+        self.handle.as_ptr()
+    }
+
     pub fn id(&self) -> usize {
         self.handle.addr().get()
     }

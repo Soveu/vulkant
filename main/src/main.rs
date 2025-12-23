@@ -161,7 +161,26 @@ fn main() {
     let actual_device = device.create_logical(&device_create_info);
     let actual_queue = actual_device.get_queue(0, 0);
 
+    assert!(
+        window.get_physical_device_presentation_support(
+            instance.get_raw().cast(), // Sigh, why no uniform vulkan-sys crate?
+            device.get_raw().cast(),
+            0,
+        )
+    );
+
+    let vk_allocator = core::ptr::null();
+    let mut surface = core::ptr::null_mut();
+    let result = unsafe {
+        window.create_window_surface(instance.get_raw().cast(), vk_allocator, &mut surface)
+    };
+    assert_eq!(result, 0);
+
     // while !window.should_close() {
     //     glfw.poll_events();
     // }
+
+    unsafe {
+        vulkant_sys::vkDestroySurfaceKHR(instance.get_raw(), surface.cast(), vk_allocator.cast());
+    }
 }

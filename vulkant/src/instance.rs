@@ -5,6 +5,10 @@ use crate::PhysicalDevice;
 pub struct Instance(NonNull<vulkant_sys::VkInstance_T>);
 
 impl Instance {
+    pub fn get_raw(&self) -> vulkant_sys::VkInstance {
+        self.0.as_ptr()
+    }
+
     /// SAFETY: info structure must be properly filled
     pub unsafe fn create(info: &vulkant_sys::VkInstanceCreateInfo) -> Self {
         let mut instance = std::ptr::null_mut();
