@@ -12,9 +12,33 @@ pub use instance::Instance;
 pub struct UtfCStr(core::ffi::CStr);
 
 #[repr(transparent)]
-pub struct Device<'phys> {
+pub struct Queue<'instance, 'device> {
+    handle: NonNull<vulkant_sys::VkQueue_T>,
+    phantom: PhantomData<&'device Device<'instance>>,
+}
+
+#[repr(transparent)]
+pub struct Device<'instance> {
     handle: NonNull<vulkant_sys::VkDevice_T>,
-    phantom: PhantomData<&'phys ()>,
+    phantom: PhantomData<&'instance Instance>,
+}
+
+impl<'instance> Device<'instance> {
+    pub fn get_queue<'device>(&'device self, family_index: u32, index: u32) -> Queue<'instance, 'device> {
+        let mut handle = core::ptr::null_mut();
+
+        unsafe { vulkant_sys::vkGetDeviceQueue(
+            self.handle.as_ptr(),
+            family_index,
+            index,
+            &mut handle,
+        ) };
+
+        return Queue {
+            handle: NonNull::new(handle).unwrap(),
+            phantom: PhantomData,
+        };
+    }
 }
 
 impl Drop for Device<'_> {
@@ -31,13 +55,27 @@ pub struct PhysicalDevice<'instance> {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-struct CombinedProperties(
+pub struct CombinedProperties(
     pub vulkant_sys::VkPhysicalDeviceProperties2,
     pub vulkant_sys::VkPhysicalDeviceVulkan11Properties,
     pub vulkant_sys::VkPhysicalDeviceVulkan12Properties,
     pub vulkant_sys::VkPhysicalDeviceVulkan13Properties,
     pub vulkant_sys::VkPhysicalDeviceVulkan14Properties,
 );
+
+impl CombinedProperties {
+    pub fn init(&mut self) {
+        self.0.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        self.1.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES;
+        self.2.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+        self.3.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES;
+        self.4.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES;
+        self.0.pNext = core::ptr::from_mut(&mut self.1).cast();
+        self.1.pNext = core::ptr::from_mut(&mut self.2).cast();
+        self.2.pNext = core::ptr::from_mut(&mut self.3).cast();
+        self.3.pNext = core::ptr::from_mut(&mut self.4).cast();
+    }
+}
 
 #[derive(Debug)]
 pub enum PhysicalDeviceType {
@@ -72,12 +110,21 @@ pub struct Properties {
     pub has_geometry_shader: bool,
 }
 
-impl PhysicalDevice<'_> {
+#[derive(Debug)]
+pub struct QueueFamilyProperties {
+    pub queue_count: u32,
+    pub has_graphics: bool,
+    pub has_compute: bool,
+    pub has_transfer: bool,
+    pub has_sparse_binding: bool,
+}
+
+impl<'instance> PhysicalDevice<'instance> {
     pub fn id(&self) -> usize {
         self.handle.addr().get()
     }
 
-    pub fn create_logical<'phys>(&'phys self, info: &vulkant_sys::VkDeviceCreateInfo) -> Device<'phys> {
+    pub fn create_logical(&self, info: &vulkant_sys::VkDeviceCreateInfo) -> Device<'instance> {
         let vk_allocator = core::ptr::null();
 
         let mut handle = core::ptr::null_mut();
@@ -91,11 +138,11 @@ impl PhysicalDevice<'_> {
         assert_eq!(result, 0);
         return Device {
             handle: NonNull::new(handle).unwrap(),
-            phantom: PhantomData,
+            phantom: self.phantom,
         };
     }
 
-    pub fn get_queue_family_properties(&self) -> Vec<vulkant_sys::VkQueueFamilyProperties> {
+    pub fn get_queue_family_properties(&self) -> Vec<QueueFamilyProperties> {
         let mut buf = Vec::new();
         buf.resize(1000, Default::default());
 
@@ -107,20 +154,21 @@ impl PhysicalDevice<'_> {
         ) };
 
         buf.resize(count as usize, Default::default());
-        return buf;
+        return buf
+            .into_iter()
+            .map(|x| QueueFamilyProperties {
+                queue_count: x.queueCount,
+                has_graphics: (x.queueFlags & (1 << 0)) != 0,
+                has_compute: (x.queueFlags & (1 << 1)) != 0,
+                has_transfer: (x.queueFlags & (1 << 2)) != 0,
+                has_sparse_binding: (x.queueFlags & (1 << 3)) != 0,
+            })
+            .collect();
     }
 
     pub fn get_properties(&self) -> Properties {
         let mut properties = CombinedProperties::default();
-        properties.0.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-        properties.1.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES;
-        properties.2.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
-        properties.3.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES;
-        properties.4.sType = vulkant_sys::VkStructureType_VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES;
-        properties.0.pNext = core::ptr::from_mut(&mut properties.1).cast();
-        properties.1.pNext = core::ptr::from_mut(&mut properties.2).cast();
-        properties.2.pNext = core::ptr::from_mut(&mut properties.3).cast();
-        properties.3.pNext = core::ptr::from_mut(&mut properties.4).cast();
+        properties.init();
 
         unsafe { vulkant_sys::vkGetPhysicalDeviceProperties2(
             self.handle.as_ptr(),
